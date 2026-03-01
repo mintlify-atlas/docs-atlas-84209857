@@ -1,0 +1,289 @@
+---
+title: Features
+description: Comprehensive overview of Shipped's capabilities and features
+---
+
+# Features
+
+Shipped provides a powerful set of features designed to make package tracking effortless and efficient.
+
+## Multi-Provider Support
+
+Track packages from multiple ecosystems in a single dashboard. Shipped currently supports:
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github">
+    Monitor repository releases with support for pre-releases and configurable release limits
+  </Card>
+  <Card title="NPM" icon="npm">
+    Track NPM packages with specific version tags (latest, beta, etc.)
+  </Card>
+  <Card title="Docker Hub" icon="docker">
+    Monitor container image tags across official and community images
+  </Card>
+  <Card title="PyPI" icon="python">
+    Track Python package releases from the Python Package Index
+  </Card>
+</CardGroup>
+
+Each provider is implemented with specific optimizations and features:
+
+```typescript
+// Example: GitHub provider configuration
+{
+  id: "github",
+  name: "Github",
+  homepage: "https://github.com",
+  extraSchema: {
+    includePrereleases: Boolean,  // Include pre-release versions
+    maxReleases: Number,          // Limit number of releases shown
+  },
+  extraDefaults: {
+    includePrereleases: false,
+    maxReleases: 3,
+  }
+}
+```
+
+### Provider-Specific Options
+
+Each provider supports custom configuration:
+
+| Provider | Options | Example |
+|----------|---------|----------|
+| **GitHub** | `includePrereleases`, `maxReleases` | Show pre-release versions and control release count |
+| **NPM** | `tags`, `npmx` | Track specific tags like `latest`, `beta`, use npmx.dev links |
+| **Docker** | `tags` | Monitor specific tags like `latest`, `alpine`, `slim` |
+| **Python** | `maxReleases` | Limit number of releases displayed |
+
+<Tip>
+  Provider defaults can be set globally in `providers.yaml` and overridden per-package in `lists.yaml`.
+</Tip>
+
+## Custom Lists and Organization
+
+Organize packages into custom lists with sections for better management:
+
+```yaml lists.yaml
+- name: Frontend Tools
+  description: Essential frontend libraries
+  groups:
+    - name: frameworks
+      displayName: JavaScript Frameworks
+      packages:
+        - provider: github
+          name: vuejs/vue
+          displayName: Vue.js
+        - provider: github
+          name: facebook/react
+          displayName: React
+
+    - name: tooling
+      displayName: Build Tools
+      packages:
+        - provider: npm
+          name: vite
+        - provider: npm
+          name: webpack
+```
+
+<Note>
+  Lists support hierarchical organization with groups and custom display names for better readability.
+</Note>
+
+## Real-Time Configuration Updates
+
+Shipped uses file watching with hot-reloading to propagate configuration changes instantly:
+
+```typescript server/services/config/loader/service.ts
+// Watch config directory for changes
+watch(".", {
+  cwd: configDir,
+  ignoreInitial: true,
+  awaitWriteFinish: {
+    pollInterval: 100,
+    stabilityThreshold: 100,
+  },
+  events: ["add", "change", "unlink"],
+})
+```
+
+Key characteristics:
+
+- **Instant Propagation**: Changes appear in the UI without manual refresh
+- **Debounced Updates**: Changes are debounced (300ms) to prevent excessive reloads
+- **Graceful Fallback**: If reload fails, the previous configuration is retained
+- **Configurable Polling**: Supports both native file watching and polling mode
+
+<Tip>
+  Enable `streamConfigChanges: true` in `general.yaml` to push updates to the UI in real-time.
+</Tip>
+
+## Smart Multi-Layer Caching
+
+Shipped implements a sophisticated caching system to minimize API calls and improve performance:
+
+### Two-Layer Cache Architecture
+
+1. **L1 Memory Cache**: Ultra-fast in-memory cache with size limits
+2. **L2 File Cache**: Persistent disk-based cache for long-term storage
+
+```typescript server/services/package/cache.ts
+const bento = new BentoCache({
+  stores: {
+    default: bentostore()
+      .useL1Layer(
+        memoryDriver({
+          maxSize: config.packages.cache.maxSize,
+          maxItems: config.packages.cache.maxItems,
+        }),
+      )
+      .useL2Layer(
+        fileDriver({
+          directory: cacheDir,
+          pruneInterval: Duration.toMillis(Duration.seconds(
+            config.packages.cache.pruneIntervalSeconds
+          )),
+        }),
+      ),
+  },
+});
+```
+
+### Cache Coalescing
+
+Shipped uses request coalescing to prevent duplicate API calls:
+
+- **Deduplication**: Multiple concurrent requests for the same package are coalesced into a single fetch
+- **In-Flight Tracking**: Tracks pending requests to avoid redundant API calls
+- **Cache Statistics**: Monitors hits, misses, and deferred requests for optimization
+
+```typescript server/libs/cache/coalescing-cache.ts
+// Track in-flight requests to prevent duplicate fetches
+const inflight = MutableHashMap.empty<string, Deferred>();
+
+if (deferred === undefined) {
+  // First request - fetch from API
+  deferred = Deferred.unsafeMake();
+  MutableHashMap.set(inflight, key, deferred);
+  // ... perform fetch
+} else {
+  // Subsequent request - wait for in-flight request
+  return Deferred.await(deferred);
+}
+```
+
+### Adaptive TTL
+
+Cache duration adapts based on content:
+
+```typescript server/services/package/index.ts
+cache.cached({
+  key: pkg.packageId,
+  namespace,
+  ttl: packageCacheTtl,
+  policy(data) {
+    return {
+      // Not found results cached for shorter duration
+      ttl: data === undefined ? Duration.minutes(10) : packageCacheTtl,
+      cacheNil: true,
+    };
+  },
+})
+```
+
+<Note>
+  Packages that don't exist are cached for 10 minutes, while found packages use the configured TTL to optimize API usage.
+</Note>
+
+## Hash-Based Security
+
+Shipped uses hash-based validation to ensure only pre-configured packages can be queried:
+
+```typescript server/services/package/index.ts
+const getPackageConfig = (pkgOrHash: PackageConfigView | string) =>
+  Effect.gen(function* () {
+    const view = yield* config.configView.get;
+    const hash = typeof pkgOrHash === "string" 
+      ? pkgOrHash 
+      : PackageConfigView.hash(pkgOrHash);
+
+    const pkgConfig = view.packageMap.get(hash);
+
+    if (!pkgConfig) {
+      return yield* new UnconfiguredPackageError({ hash });
+    }
+
+    return pkgConfig;
+  });
+```
+
+This prevents unauthorized queries by:
+
+- **Pre-computation**: Package hashes are computed during configuration load
+- **Validation**: Only requests with valid hashes are processed
+- **No Discovery**: Prevents enumeration or discovery of arbitrary packages
+
+## Rate Limiting
+
+Built-in rate limiting protects against abuse:
+
+```typescript server/rpc/middlewares/ratelimiter.ts
+const limiter = new MemoryRatelimiter(opts);
+
+// Rate limit per IP address
+const limiterResult = await limiter.limit(`${ip}:${pKey}`);
+
+if (!limiterResult.success) {
+  throw new ORPCError("TOO_MANY_REQUESTS", {
+    data: {
+      limit: limiterResult.limit,
+      remaining: limiterResult.remaining,
+      reset: limiterResult.reset,
+    },
+  });
+}
+```
+
+- **Per-IP Limits**: Rate limiting applied per client IP address
+- **Bogon Exclusion**: Private/local IP addresses skip rate limiting
+- **Configurable Thresholds**: Customize limits based on your needs
+
+## Concurrency Control
+
+Package fetching is controlled with semaphores to prevent overwhelming external APIs:
+
+```typescript server/services/package/index.ts
+const semaphore = yield* TSemaphore.make(10);
+
+// Limit concurrent API requests
+provider.getPackage(pkg).pipe(
+  TSemaphore.withPermit(semaphore),
+  // ... rest of processing
+)
+```
+
+This ensures:
+
+- **Controlled Concurrency**: Maximum 10 concurrent package fetches
+- **API Protection**: Prevents rate limit issues with external providers
+- **Resource Management**: Avoids overwhelming system resources
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card
+    title="Configuration Guide"
+    icon="file-code"
+    href="/configuration/overview"
+  >
+    Learn how to configure lists, providers, and UI settings
+  </Card>
+  <Card
+    title="Provider Details"
+    icon="plug"
+    href="/providers/overview"
+  >
+    Deep dive into each provider's capabilities and options
+  </Card>
+</CardGroup>

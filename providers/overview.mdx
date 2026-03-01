@@ -1,0 +1,168 @@
+---
+title: Providers Overview
+description: Learn about package providers in Shipped and how they track releases from different sources
+---
+
+Providers are the core mechanism in Shipped for fetching package information and releases from various package registries and repositories. Each provider is designed to interact with a specific platform's API.
+
+## Available Providers
+
+Shipped currently supports four package providers:
+
+- **[GitHub](/providers/github)** - Track GitHub releases
+- **[NPM](/providers/npm)** - Track NPM package versions
+- **[Docker Hub](/providers/docker)** - Track Docker image tags
+- **[Python/PyPI](/providers/python)** - Track Python package releases
+
+## How Providers Work
+
+Each provider implements a standard interface that:
+
+1. **Fetches package metadata** - Retrieves basic information about the package
+2. **Fetches releases** - Gets version/release information based on provider-specific criteria
+3. **Normalizes data** - Converts provider-specific data into a unified format
+4. **Handles errors** - Provides consistent error handling for network issues and missing packages
+
+## Provider Architecture
+
+Providers are implemented using Effect-TS and follow a layered architecture:
+
+### Provider Structure
+
+Each provider consists of:
+
+- **Client Layer** (`client.ts`) - HTTP client for API interactions
+- **Provider Implementation** (`index.ts`) - Core logic for fetching and processing packages
+- **Type Definitions** (`types.ts`) - TypeScript schemas for API responses
+- **Provider Info** (in `shared/providers/`) - Configuration, icons, and extra options
+
+### Common Components
+
+**Provider Info**
+
+Each provider has a `ProviderInfo` object that defines:
+
+```typescript
+{
+  id: string;           // Unique identifier (e.g., "npm", "github")
+  name: string;         // Display name (e.g., "NPM", "Github")
+  homepage: string;     // Provider's homepage URL
+  icon: string;         // Icon identifier
+  extraSchema: Schema;  // Validation schema for provider-specific options
+  extraDefaults: object; // Default values for extra options
+}
+```
+
+**Error Handling**
+
+Providers can throw three types of errors:
+
+- `PackageNotFoundError` - Package doesn't exist (HTTP 404)
+- `NetworkError` - Network or API issues
+- `InvalidPackageNameError` - Malformed package name
+
+## Package Format
+
+All providers return data in a unified `Package` format:
+
+```typescript
+{
+  name: string;              // Package name
+  owner?: string;            // Package owner/namespace
+  providerName: string;      // Provider ID
+  url: string;               // Package URL on provider's site
+  sourceUrl?: string;        // Source code URL (e.g., GitHub repo)
+  description?: string;      // Package description
+  stars?: number;            // Star/like count (if available)
+  releases: Release[];       // Array of releases
+}
+```
+
+**Release Format**
+
+```typescript
+{
+  name: string;              // Release name
+  version: string;           // Version identifier
+  tag?: string;              // Tag name
+  createdAt?: string;        // ISO 8601 timestamp
+  url?: string;              // Release URL
+}
+```
+
+## Provider Configuration
+
+Each provider supports configuration through the `extra` field in package configuration:
+
+```yaml
+packages:
+  - name: example-package
+    provider: npm
+    extra:
+      tags: ["latest", "next"]  # Provider-specific options
+```
+
+Provider-specific options are validated using the provider's `extraSchema` and merged with `extraDefaults`.
+
+## Caching
+
+All provider requests are cached to improve performance and reduce API calls:
+
+- **L1 Cache** - In-memory cache with configurable size limits
+- **L2 Cache** - Filesystem cache for persistence across restarts
+- **Cache Key** - Based on package name and provider-specific parameters
+
+Cache configuration:
+
+```bash
+SERVER_PACKAGES_CACHE_DISABLED=false
+SERVER_PACKAGES_CACHE_DIR=.shipped/cache
+SERVER_PACKAGES_CACHE_MAX_SIZE=100mb
+SERVER_PACKAGES_CACHE_MAX_ITEMS=1000
+SERVER_PACKAGES_CACHE_PRUNE_INTERVAL_SECONDS=3600
+```
+
+## Rate Limiting
+
+API requests are rate-limited based on client IP address to prevent abuse:
+
+- Rate limiting is applied per IP per endpoint
+- Bogon addresses (private/local IPs) are exempt from rate limiting
+- Returns `TOO_MANY_REQUESTS` error when limit exceeded
+
+## HTTP Client
+
+All providers use a shared HTTP client (`fetch.ts`) built on `ofetch`:
+
+```typescript
+import { $fetch } from "~~/server/providers/fetch";
+
+const data = await $fetch<ResponseType>(url, {
+  headers: { Accept: "application/json" },
+  redirect: "follow",
+});
+```
+
+**Features:**
+- Automatic JSON parsing
+- Redirect following
+- Consistent error handling
+- Test environment compatibility (gzip encoding for replay)
+
+## Adding a Package
+
+To track a package, add it to your configuration file:
+
+```yaml
+packages:
+  - name: package-name
+    provider: npm  # or github, docker, python
+    extra:
+      # Provider-specific options
+```
+
+See individual provider documentation for:
+- Package name format requirements
+- Available extra options
+- API endpoints used
+- Example configurations

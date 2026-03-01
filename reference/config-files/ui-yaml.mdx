@@ -1,0 +1,22 @@
+---
+title: ui.yaml
+description: User interface configuration
+---
+
+The `ui.yaml` file contains settings that control the user interface behavior and appearance.
+
+## Configuration Options
+
+<ParamField path="maxListsInHeader" type="number">
+  Maximum number of lists to display in the header navigation. When the number of lists exceeds this value, the header will adapt its display accordingly (e.g., showing a dropdown or condensed view).
+</ParamField>
+
+## Example
+
+```yaml
+maxListsInHeader: 5
+```
+
+## Default Behavior
+
+If `ui.yaml` is not present or `maxListsInHeader` is not specified, the application will use its default value for maximum lists in the header.

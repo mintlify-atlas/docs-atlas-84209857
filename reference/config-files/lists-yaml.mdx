@@ -1,0 +1,202 @@
+---
+title: lists.yaml
+description: Configure package lists and groups
+---
+
+The `lists.yaml` file defines the package lists displayed in your Shipped instance. Each list can contain multiple groups of packages from different providers.
+
+## File Structure
+
+The configuration file is an array of list objects:
+
+```yaml
+- name: My Packages
+  description: Tracking important releases
+  groups:
+    - name: Frontend
+      displayName: Frontend Frameworks
+      showName: true
+      packages:
+        - provider: npm
+          name: react
+          displayName: React
+        - provider: npm
+          name: vue
+```
+
+## List Configuration
+
+<ParamField path="name" type="string" required>
+  The unique name of the list.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the list.
+</ParamField>
+
+<ParamField path="groups" type="array">
+  Array of package groups within this list.
+</ParamField>
+
+## Group Configuration
+
+<ParamField path="groups[].name" type="string | number" required>
+  The name or identifier of the group.
+</ParamField>
+
+<ParamField path="groups[].displayName" type="string">
+  Display name for the group (overrides `name` in UI).
+</ParamField>
+
+<ParamField path="groups[].showName" type="boolean">
+  Whether to show the group name in the UI.
+</ParamField>
+
+<ParamField path="groups[].packages" type="array" required>
+  Array of packages in this group. Each package must specify a provider.
+</ParamField>
+
+## Package Configuration
+
+All packages share these common fields:
+
+<ParamField path="provider" type="string" required>
+  The package provider. Must be one of: `github`, `npm`, `python`, `docker`.
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The package identifier (e.g., repository name, package name).
+</ParamField>
+
+<ParamField path="displayName" type="string">
+  Custom display name for the package.
+</ParamField>
+
+<ParamField path="icon" type="string">
+  URL or path to the package icon.
+</ParamField>
+
+<ParamField path="iconDark" type="string">
+  URL or path to the dark mode icon.
+</ParamField>
+
+<ParamField path="extra" type="object">
+  Provider-specific configuration options (see below).
+</ParamField>
+
+## Provider-Specific Options
+
+### GitHub
+
+<ParamField path="extra.includePrereleases" type="boolean">
+  Include pre-release versions in the release list.
+</ParamField>
+
+<ParamField path="extra.maxReleases" type="number">
+  Maximum number of releases to fetch and display.
+</ParamField>
+
+**Example:**
+```yaml
+- provider: github
+  name: vercel/next.js
+  displayName: Next.js
+  extra:
+    includePrereleases: false
+    maxReleases: 10
+```
+
+### NPM
+
+<ParamField path="extra.tags" type="array">
+  Array of NPM dist-tags to track (e.g., `latest`, `next`, `beta`).
+</ParamField>
+
+<ParamField path="extra.npmx" type="boolean">
+  Use npmx.dev instead of npmjs.com as the external link to the package.
+</ParamField>
+
+**Example:**
+```yaml
+- provider: npm
+  name: react
+  extra:
+    tags: [latest, next, experimental]
+    npmx: true
+```
+
+### Python
+
+<ParamField path="extra.maxReleases" type="number">
+  Maximum number of releases to fetch and display.
+</ParamField>
+
+**Example:**
+```yaml
+- provider: python
+  name: django
+  extra:
+    maxReleases: 15
+```
+
+### Docker
+
+<ParamField path="extra.tags" type="array">
+  Array of Docker tags to track (e.g., `latest`, `stable`).
+</ParamField>
+
+**Example:**
+```yaml
+- provider: docker
+  name: nginx
+  extra:
+    tags: [latest, stable, alpine]
+```
+
+## Complete Example
+
+```yaml
+- name: Production Stack
+  description: Critical production dependencies
+  groups:
+    - name: frontend
+      displayName: Frontend
+      showName: true
+      packages:
+        - provider: npm
+          name: react
+          displayName: React
+          extra:
+            tags: [latest]
+        - provider: npm
+          name: next
+          displayName: Next.js
+          extra:
+            tags: [latest, canary]
+            npmx: true
+    
+    - name: backend
+      displayName: Backend Services
+      showName: true
+      packages:
+        - provider: python
+          name: fastapi
+          extra:
+            maxReleases: 10
+        - provider: docker
+          name: postgres
+          displayName: PostgreSQL
+          extra:
+            tags: [latest, alpine]
+    
+    - name: tools
+      displayName: Development Tools
+      showName: true
+      packages:
+        - provider: github
+          name: vercel/turbo
+          displayName: Turborepo
+          extra:
+            includePrereleases: false
+            maxReleases: 5
+```

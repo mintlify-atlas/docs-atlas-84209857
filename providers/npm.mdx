@@ -1,0 +1,368 @@
+---
+title: NPM Provider
+description: Track NPM package versions using the NPM provider in Shipped
+---
+
+The NPM provider tracks package versions from the NPM registry using the official [NPM Registry API](https://registry.npmjs.org/).
+
+## Package Name Format
+
+NPM packages can be specified as:
+
+**Unscoped packages:**
+```yaml
+packages:
+  - name: react
+    provider: npm
+```
+
+**Scoped packages:**
+```yaml
+packages:
+  - name: "@vue/core"
+    provider: npm
+```
+
+Scoped packages are automatically parsed to extract:
+- **Owner:** The scope (e.g., `vue` from `@vue/core`)
+- **Name:** The package name (e.g., `core` from `@vue/core`)
+
+## Configuration Options
+
+The NPM provider supports the following extra options:
+
+### `tags`
+
+**Type:** `string[]`  
+**Default:** `["latest"]`
+
+Dist-tags to track. Each tag represents a release channel.
+
+```yaml
+packages:
+  - name: next
+    provider: npm
+    extra:
+      tags: ["latest", "canary"]
+```
+
+**Common NPM tags:**
+- `latest` - Stable production release
+- `next` - Next major version
+- `beta` - Beta releases
+- `canary` - Canary/experimental releases
+- `rc` - Release candidates
+
+Each tag resolves to a specific version via the package's `dist-tags`.
+
+### `npmx`
+
+**Type:** `boolean`  
+**Default:** `false`
+
+Use [npmx.dev](https://npmx.dev) instead of npmjs.com for package URLs.
+
+```yaml
+packages:
+  - name: typescript
+    provider: npm
+    extra:
+      npmx: true
+```
+
+**URL comparison:**
+- When `false`: `https://npmjs.com/package/typescript`
+- When `true`: `https://npmx.dev/package/typescript`
+
+Source: `server/providers/npm/index.ts:34`
+
+## Complete Example
+
+```yaml
+packages:
+  - name: "@angular/core"
+    provider: npm
+    extra:
+      tags: ["latest", "next"]
+      npmx: false
+```
+
+## API Endpoints
+
+The NPM provider uses the official NPM registry:
+
+### Get Package Document (Packument)
+
+```
+GET https://registry.npmjs.org/{package}
+```
+
+**For scoped packages:**
+```
+GET https://registry.npmjs.org/@scope/package
+```
+
+The URL encoding preserves the `/` in scoped package names:
+
+```typescript
+const encodedName = encodeURIComponent(name).replace(/%2F/g, "/");
+const url = new URL(encodedName, NPM_REGISTRY_URL).toString();
+```
+
+Source: `server/providers/npm/client.ts:21-22`
+
+**Response fields used:**
+- `name` - Full package name
+- `dist-tags` - Object mapping tag names to versions
+- `versions` - Object containing all version metadata
+- `time` - Object mapping versions to publish timestamps
+- `repository.url` - Source repository URL
+
+## Package Output Format
+
+The NPM provider returns packages in this format:
+
+**Unscoped package:**
+```typescript
+{
+  name: "react",
+  owner: undefined,
+  providerName: "npm",
+  url: "https://npmjs.com/package/react",
+  sourceUrl: "https://github.com/facebook/react",
+  releases: [
+    {
+      name: "react",
+      version: "18.2.0",
+      tag: "latest",
+      createdAt: "2024-01-15T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+**Scoped package:**
+```typescript
+{
+  name: "core",                // Package name without scope
+  owner: "vue",                // Scope without @
+  providerName: "npm",
+  url: "https://npmjs.com/package/@vue/core",
+  sourceUrl: "https://github.com/vuejs/core",
+  releases: [...]
+}
+```
+
+## Release Resolution
+
+Releases are resolved by looking up each requested tag in the package's `dist-tags`:
+
+```typescript
+const releases = tagsToGet
+  .filter((t) => isString(t))
+  .map((tag) => {
+    const version = result["dist-tags"][tag];  // "18.2.0"
+    if (!version) return undefined;
+    
+    const versionData = result.versions[version];  // Full version metadata
+    if (!versionData) return undefined;
+    
+    const publishedAt = result.time[version];  // "2024-01-15T10:30:00.000Z"
+    
+    return {
+      version,
+      createdAt: publishedAt ? new Date(publishedAt).toISOString() : undefined,
+      name: versionData.name,
+      tag: tag,
+    };
+  })
+  .filter((t) => !!t);
+```
+
+Source: `server/providers/npm/index.ts:48-68`
+
+**Process:**
+1. For each tag in `tags` array
+2. Look up version in `dist-tags[tag]`
+3. Get version metadata from `versions[version]`
+4. Get publish timestamp from `time[version]`
+5. Create release object
+6. Filter out failed lookups (missing tags/versions)
+
+## Source URL Extraction
+
+Source repository URLs are extracted and cleaned:
+
+```typescript
+const sourceUrl = result.repository?.url
+  ?.replace(/^\+/, "")      // Remove leading +
+  .replace(/\.git$/, "");   // Remove trailing .git
+```
+
+Source: `server/providers/npm/index.ts:32`
+
+**Examples:**
+- `git+https://github.com/user/repo.git` → `https://github.com/user/repo`
+- `https://github.com/user/repo.git` → `https://github.com/user/repo`
+
+## Error Handling
+
+### Package Not Found (404)
+
+Occurs when:
+- Package doesn't exist in NPM registry
+- Package name is misspelled
+- Package was unpublished
+
+```typescript
+new PackageNotFoundError({ name, provider: "npm" })
+```
+
+Source: `server/providers/npm/client.ts:30`
+
+### Network Error
+
+Occurs when:
+- NPM registry is unreachable
+- Request times out
+- Other HTTP errors (non-404)
+
+```typescript
+new NetworkError({
+  name,
+  provider: "npm",
+  reason: error.message
+})
+```
+
+Source: `server/providers/npm/client.ts:32-36`
+
+## Implementation Details
+
+### Client Layer
+
+The NPM client (`NpmClient`) provides one method:
+
+```typescript
+class NpmClient {
+  getPackument(name: string): Effect<NpmPackument, ProviderError>
+}
+```
+
+### Type Definitions
+
+**NpmPackument (Package Document):**
+
+```typescript
+{
+  name: string;
+  description?: string;
+  "dist-tags": Record<string, string>;  // tag -> version
+  versions: Record<string, NpmVersion>; // version -> metadata
+  maintainers: NpmPerson[];
+  time: Record<string, string>;         // version -> timestamp
+  author: NpmPerson | string | null;
+  license?: string;
+  repository?: NpmRepository;
+  readme?: string;
+}
+```
+
+Source: `server/providers/npm/types.ts:40-51`
+
+**NpmVersion:**
+
+```typescript
+{
+  name: string;
+  version: string;
+  description?: string;
+  main?: string;
+  author: NpmPerson | string | null;
+  license?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  dist: NpmDist;
+  maintainers: NpmPerson[];
+  scripts?: Record<string, string>;
+  repository?: NpmRepository;
+}
+```
+
+Source: `server/providers/npm/types.ts:24-38`
+
+**NpmRepository:**
+
+```typescript
+{
+  type: string;         // "git"
+  url: string;          // Repository URL
+  directory?: string;   // Monorepo subdirectory
+}
+```
+
+Source: `server/providers/npm/types.ts:18-22`
+
+## Provider Info
+
+```typescript
+export const NpmProviderInfo = new ProviderInfo({
+  id: "npm",
+  name: "NPM",
+  homepage: "https://npm.com",
+  icon: "devicon:npm",
+  extraSchema: Schema.Struct({
+    tags: Schema.Array(Schema.String).pipe(Schema.optional),
+    npmx: Schema.Boolean.pipe(
+      Schema.annotations({
+        description: "Use npmx.dev instead of npmjs.com as the external link to the package",
+      }),
+      Schema.optional,
+    ),
+  }),
+  extraDefaults: {
+    tags: ["latest"],
+  },
+});
+```
+
+Source: `shared/providers/npm.ts:5-22`
+
+## Scoped Package Parsing
+
+Scoped packages are parsed to extract owner and name:
+
+```typescript
+let name = result.name;
+let owner: string | undefined;
+
+if (result.name.startsWith("@")) {
+  const parts = result.name.split("/");
+  if (parts && parts.length === 2) {
+    owner = parts[0]?.substring(1);  // Remove the @
+    name = parts[1] || name;
+  }
+}
+```
+
+Source: `server/providers/npm/index.ts:24-30`
+
+**Example:**
+- Input: `@vue/core`
+- Owner: `vue`
+- Name: `core`
+
+## Caching
+
+NPM provider requests are cached using the standard Shipped cache:
+
+- Cache key includes: package name and configuration hash
+- Packument responses are cached to reduce registry load
+- Tags are resolved from cached packument data
+
+## Version History
+
+**Current version:** `2`
+
+Source: `server/providers/npm/index.ts:16`

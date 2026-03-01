@@ -1,0 +1,106 @@
+---
+title: Introduction
+description: A self-hosted dashboard for tracking package releases across multiple platforms
+---
+
+# Welcome to Shipped
+
+Shipped is a self-hosted dashboard that tracks package releases across platforms like GitHub, NPM, Docker Hub, and PyPI. Group your dependencies into custom lists to instantly monitor new versions and stay up-to-date with the packages you depend on.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quick Start"
+    icon="rocket"
+    href="/getting-started/quickstart"
+  >
+    Get Shipped running in minutes with Docker Compose
+  </Card>
+  <Card
+    title="Features"
+    icon="stars"
+    href="/features"
+  >
+    Explore multi-provider support, caching, and real-time updates
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/configuration/overview"
+  >
+    Learn how to configure lists, providers, and UI settings
+  </Card>
+  <Card
+    title="Providers"
+    icon="plug"
+    href="/providers/overview"
+  >
+    Discover supported package providers and their options
+  </Card>
+</CardGroup>
+
+## Why Shipped?
+
+Keeping track of updates across multiple package ecosystems is challenging. Whether you're monitoring dependencies for security updates, tracking framework releases, or managing container images, Shipped provides a unified dashboard for all your packages.
+
+<Note>
+  Shipped is designed to be self-hosted, giving you full control over your monitoring infrastructure. All configuration is stored in simple YAML files that can be version-controlled.
+</Note>
+
+## Key Capabilities
+
+- **Multi-Provider Support**: Track packages from GitHub, NPM, Docker Hub, and PyPI in one place
+- **Organized Lists**: Group packages into custom lists with sections for better organization
+- **Real-Time Updates**: Configuration changes propagate to the UI instantly via hot-reloading
+- **Smart Caching**: Multi-layer caching (L1 memory + L2 file) minimizes API calls and improves performance
+- **Hash-Based Security**: Only pre-configured packages can be queried, preventing unauthorized access
+
+## Quick Start with Docker
+
+Get started in seconds with Docker Compose:
+
+```yaml docker-compose.yml
+services:
+  shipped:
+    image: nipakke/shipped:1
+    ports:
+      - 3000:3000
+    volumes:
+      - /path-to-data:/data
+    restart: unless-stopped
+```
+
+Then create your first list in `/path-to-data/config/lists.yaml`:
+
+```yaml lists.yaml
+- name: My Packages
+  groups:
+    - name: frontend
+      packages:
+        - provider: github
+          name: vuejs/vue
+        - provider: npm
+          name: vue
+```
+
+<Tip>
+  All configuration files support IDE autocompletion with JSON schemas. Your editor will provide intelligent suggestions as you type.
+</Tip>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card
+    title="Configure Your First List"
+    icon="list"
+    href="/configuration/lists"
+  >
+    Learn how to organize packages into custom lists and groups
+  </Card>
+  <Card
+    title="Explore Architecture"
+    icon="sitemap"
+    href="/advanced/architecture"
+  >
+    Understand how Shipped works under the hood
+  </Card>
+</CardGroup>

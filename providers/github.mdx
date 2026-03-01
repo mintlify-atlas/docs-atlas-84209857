@@ -1,0 +1,301 @@
+---
+title: GitHub Provider
+description: Track GitHub releases using the GitHub provider in Shipped
+---
+
+The GitHub provider tracks releases from GitHub repositories using the [ungh.cc](https://ungh.cc) API.
+
+## Package Name Format
+
+GitHub packages must be specified as `owner/repo`:
+
+```yaml
+packages:
+  - name: facebook/react
+    provider: github
+```
+
+**Invalid formats:**
+- `react` - Missing owner
+- `https://github.com/facebook/react` - Full URL not supported
+- `facebook/react/subfolder` - Paths not supported
+
+## Configuration Options
+
+The GitHub provider supports the following extra options:
+
+### `includePrereleases`
+
+**Type:** `boolean`  
+**Default:** `false`
+
+Include pre-release versions in the releases list.
+
+```yaml
+packages:
+  - name: vercel/next.js
+    provider: github
+    extra:
+      includePrereleases: true
+```
+
+When `false`, only stable releases are included. Draft releases are always excluded.
+
+### `maxReleases`
+
+**Type:** `number`  
+**Default:** `3`  
+**Maximum:** `10`
+
+Number of recent releases to track.
+
+```yaml
+packages:
+  - name: nodejs/node
+    provider: github
+    extra:
+      maxReleases: 5
+```
+
+The value is clamped to a maximum of 10 releases.
+
+## Complete Example
+
+```yaml
+packages:
+  - name: microsoft/TypeScript
+    provider: github
+    extra:
+      includePrereleases: false
+      maxReleases: 3
+```
+
+## API Endpoints
+
+The GitHub provider uses the ungh.cc API:
+
+### Get Repository Info
+
+```
+GET https://ungh.cc/repos/{owner}/{repo}
+```
+
+**Response fields used:**
+- `repo.repo` - Full repository name
+- `repo.name` - Repository name
+
+### Get Releases
+
+```
+GET https://ungh.cc/repos/{owner}/{repo}/releases
+```
+
+**Response fields used:**
+- `releases[].id` - Release ID
+- `releases[].tag` - Git tag name
+- `releases[].name` - Release name
+- `releases[].publishedAt` - Publication timestamp
+- `releases[].prerelease` - Whether it's a pre-release
+- `releases[].draft` - Whether it's a draft (always filtered out)
+
+## Package Output Format
+
+The GitHub provider returns packages in this format:
+
+```typescript
+{
+  name: "TypeScript",           // Repository name only
+  owner: "microsoft",           // Repository owner
+  providerName: "github",
+  url: "https://github.com/microsoft/TypeScript",
+  sourceUrl: "https://github.com/microsoft/TypeScript",
+  releases: [
+    {
+      name: "TypeScript 5.3",
+      version: "v5.3.0",
+      tag: "v5.3.0",
+      createdAt: "2024-01-15T10:30:00Z",
+      url: "https://github.com/microsoft/TypeScript/releases/tag/v5.3.0"
+    }
+  ]
+}
+```
+
+## Release Filtering
+
+Releases are filtered and processed as follows:
+
+1. **Exclude drafts** - Draft releases are always filtered out
+2. **Filter prereleases** - Based on `includePrereleases` option
+3. **Sort by date** - Most recent releases first (handled by API)
+4. **Limit count** - Take first N releases based on `maxReleases` (clamped to 10)
+
+**Implementation:**
+
+```typescript
+const latestReleases = releasesResponse.releases
+  .filter((t: GithubRelease) => {
+    return (
+      !!t &&
+      (effectiveExtra?.includePrereleases === true || !t.prerelease) &&
+      t.draft != true
+    );
+  })
+  .slice(0, Number.isFinite(maxReleases) ? clamp(maxReleases, 10) : 5);
+```
+
+Source: `server/providers/github/index.ts:40-51`
+
+## URL Generation
+
+Release URLs are constructed as:
+
+```
+https://github.com/{owner}/{repo}/releases/tag/{tag}
+```
+
+Example: `https://github.com/facebook/react/releases/tag/v18.2.0`
+
+## Error Handling
+
+### Package Not Found (404)
+
+Occurs when:
+- Repository doesn't exist
+- Repository is private and not accessible
+- Owner or repo name is incorrect
+
+```typescript
+new PackageNotFoundError({ 
+  name: `${owner}/${repo}`, 
+  provider: "github" 
+})
+```
+
+### Invalid Package Name
+
+Occurs when:
+- Name doesn't contain a `/`
+- Owner or repo part is empty
+
+```typescript
+new InvalidPackageNameError({ 
+  name, 
+  provider: "github" 
+})
+```
+
+Source: `server/providers/github/index.ts:22-24`
+
+### Network Error
+
+Occurs when:
+- API is unreachable
+- Request times out
+- Other HTTP errors (non-404)
+
+```typescript
+new NetworkError({
+  name: `${owner}/${repo}`,
+  provider: "github",
+  reason: error.message
+})
+```
+
+## Implementation Details
+
+### Client Layer
+
+The GitHub client (`GithubClient`) provides two methods:
+
+```typescript
+class GithubClient {
+  getRepo(owner: string, repo: string): Effect<GithubRepoResponse, ProviderError>
+  getReleases(owner: string, repo: string): Effect<GithubReleasesResponse, ProviderError>
+}
+```
+
+### Type Definitions
+
+**GithubRelease:**
+
+```typescript
+{
+  id: number;
+  tag: string;
+  author: string;
+  name: string;
+  draft: boolean;
+  prerelease: boolean;
+  createdAt: string;
+  publishedAt: string;
+  markdown: string;
+  html: string;
+}
+```
+
+Source: `server/providers/github/types.ts:3-14`
+
+**GithubRepo:**
+
+```typescript
+{
+  id: number;
+  name: string;
+  repo: string;              // Full name (owner/repo)
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  pushedAt: string;
+  stars: number;
+  watchers: number;
+  forks: number;
+  defaultBranch: string;
+}
+```
+
+Source: `server/providers/github/types.ts:16-28`
+
+## Provider Info
+
+```typescript
+export const GithubProviderInfo = new ProviderInfo({
+  id: "github",
+  name: "Github",
+  homepage: "https://github.com",
+  icon: "lucide:github",
+  extraSchema: Schema.Struct({
+    includePrereleases: Schema.Boolean.pipe(Schema.optional),
+    maxReleases: Schema.Number.pipe(Schema.optional),
+  }),
+  extraDefaults: {
+    includePrereleases: false,
+    maxReleases: 3,
+  },
+});
+```
+
+Source: `shared/providers/github.ts:5-18`
+
+## Why ungh.cc?
+
+The provider uses [ungh.cc](https://ungh.cc) instead of the GitHub API directly because:
+
+- No authentication required
+- Higher rate limits for public data
+- Simpler API responses
+- Better caching for popular repositories
+
+## Caching
+
+GitHub provider requests are cached using the standard Shipped cache:
+
+- Cache key includes: `owner`, `repo`, and configuration hash
+- Default TTL determined by server cache settings
+- Both repository info and releases are cached separately
+
+## Version History
+
+**Current version:** `1`
+
+Source: `server/providers/github/index.ts:15`

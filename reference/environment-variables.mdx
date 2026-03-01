@@ -1,0 +1,96 @@
+---
+title: Environment Variables
+description: Configure Shipped server with environment variables
+---
+
+Shipped can be configured using environment variables. All server configuration is namespaced under `SERVER_` prefix.
+
+## SERVER
+
+<ParamField path="SERVER_TRUST_PROXIES" type="boolean">
+  Trust reverse proxies for client IPs. 
+  - `true`: always trust
+  - `false`: never trust (always uses direct remote address)
+  - Unset (default): auto-detects based on the connection
+</ParamField>
+
+## Server Configuration
+
+General server environment and file-watching configurations.
+
+<ParamField path="SERVER_CONFIG_DIR" type="string" default="config">
+  Config files folder relative to `process.cwd()` or absolute path.
+</ParamField>
+
+<ParamField path="SERVER_CONFIG_WATCH_POLLING" type="boolean" default={false}>
+  Use polling instead of native FS events for config file watching. It is typically necessary to set this to `true` to successfully watch files over a network.
+</ParamField>
+
+## Package Settings
+
+<ParamField path="SERVER_PACKAGES_FETCH_CONCURRENCY" type="integer" default={10}>
+  Maximum number of parallel package fetch requests.
+</ParamField>
+
+## Package Cache
+
+Package cache settings including TTL, sizing, and persistence options.
+
+<ParamField path="SERVER_PACKAGES_CACHE_DISABLED" type="boolean" default={false}>
+  Disable the package cache entirely.
+</ParamField>
+
+<ParamField path="SERVER_PACKAGES_CACHE_DIR" type="string" default="cache">
+  Filesystem directory for persistent L2 cache storage.
+</ParamField>
+
+<ParamField path="SERVER_PACKAGES_CACHE_TTL" type="integer" default={10800}>
+  Main cache TTL for packages, in seconds. Default: 10800 (3 hours). It is recommended to not change this value.
+</ParamField>
+
+<ParamField path="SERVER_PACKAGES_CACHE_MAX_SIZE" type="string" default="50mb">
+  Maximum size for L1 memory cache.
+</ParamField>
+
+<ParamField path="SERVER_PACKAGES_CACHE_MAX_ITEMS" type="integer" default={2000}>
+  Maximum number of items for L1 memory cache.
+</ParamField>
+
+<ParamField path="SERVER_PACKAGES_CACHE_PRUNE_INTERVAL" type="integer" default={1200}>
+  Interval in seconds for pruning expired cache entries. Default: 1200 (20 minutes). It is recommended to not change this value.
+</ParamField>
+
+## Example Configuration
+
+```bash
+# Server settings
+SERVER_TRUST_PROXIES=true
+SERVER_CONFIG_DIR=/app/config
+SERVER_CONFIG_WATCH_POLLING=false
+
+# Package fetching
+SERVER_PACKAGES_FETCH_CONCURRENCY=20
+
+# Cache configuration
+SERVER_PACKAGES_CACHE_DISABLED=false
+SERVER_PACKAGES_CACHE_DIR=/app/cache
+SERVER_PACKAGES_CACHE_TTL=10800
+SERVER_PACKAGES_CACHE_MAX_SIZE=100mb
+SERVER_PACKAGES_CACHE_MAX_ITEMS=5000
+SERVER_PACKAGES_CACHE_PRUNE_INTERVAL=1200
+```
+
+## Docker Example
+
+When running Shipped in Docker:
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -v ./config:/app/config \
+  -v ./cache:/app/cache \
+  -e SERVER_CONFIG_DIR=/app/config \
+  -e SERVER_PACKAGES_CACHE_DIR=/app/cache \
+  -e SERVER_PACKAGES_CACHE_MAX_SIZE=100mb \
+  shipped:latest
+```

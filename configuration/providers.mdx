@@ -1,0 +1,444 @@
+---
+title: Providers Configuration
+description: Configure provider defaults and options in providers.yaml
+icon: plug
+---
+
+The `providers.yaml` file configures global defaults for package providers. These settings apply to all packages using each provider unless overridden in `lists.yaml`.
+
+## File Location
+
+Place `providers.yaml` in your config directory:
+- **Docker**: `/data/config/providers.yaml` (default)
+- **Custom**: Set via `SERVER_CONFIG_DIR` environment variable
+
+## Basic Structure
+
+```yaml providers.yaml
+github:
+  extra:
+    maxReleases: 5
+    includePrereleases: false
+
+npm:
+  extra:
+    tags:
+      - latest
+      - beta
+
+docker:
+  extra:
+    tags:
+      - latest
+      - slim
+      - alpine
+
+python:
+  extra:
+    maxReleases: 5
+```
+
+## Provider Configuration
+
+Each provider can have an `extra` object with provider-specific options. These act as defaults that can be overridden per-package in `lists.yaml`.
+
+## Supported Providers
+
+<Tabs>
+  <Tab title="GitHub">
+    ### GitHub Provider
+    
+    Fetches releases from GitHub repositories.
+    
+    <ParamField path="github.extra.maxReleases" type="number" default={3}>
+      Maximum number of releases to fetch per repository (1-10).
+      
+      Default: `3`
+    </ParamField>
+    
+    <ParamField path="github.extra.includePrereleases" type="boolean" default={false}>
+      Whether to include pre-release versions in the results.
+      
+      Default: `false`
+    </ParamField>
+    
+    ```yaml Example
+    github:
+      extra:
+        maxReleases: 5
+        includePrereleases: false
+    ```
+    
+    <Accordion title="Implementation Details">
+      - Fetches from GitHub's REST API
+      - Filters out draft releases
+      - Optionally filters out pre-releases based on `includePrereleases`
+      - Limits results to `maxReleases` (clamped between 1 and 10)
+      - Package format: `owner/repo` (e.g., `facebook/react`)
+    </Accordion>
+  </Tab>
+  
+  <Tab title="NPM">
+    ### NPM Provider
+    
+    Fetches package information from NPM registry.
+    
+    <ParamField path="npm.extra.tags" type="string[]" default={["latest"]}>
+      Array of NPM dist-tags to track. Common tags include:
+      - `latest` - Latest stable version
+      - `beta` - Beta releases
+      - `next` - Next version
+      - `canary` - Canary builds
+      - Custom tags defined by package maintainers
+      
+      Default: `["latest"]`
+    </ParamField>
+    
+    <ParamField path="npm.extra.npmx" type="boolean" default={false}>
+      Use npmx.dev instead of npmjs.com as the external link to the package.
+      
+      Default: `false`
+    </ParamField>
+    
+    ```yaml Example
+    npm:
+      extra:
+        tags:
+          - latest
+          - beta
+          - next
+        npmx: false
+    ```
+    
+    <Accordion title="Implementation Details">
+      - Fetches from NPM's registry API
+      - Supports scoped packages (e.g., `@types/node`)
+      - Extracts owner from scoped package names
+      - Links to npmjs.com or npmx.dev based on `npmx` setting
+      - Fetches specific dist-tags defined in `tags`
+    </Accordion>
+  </Tab>
+  
+  <Tab title="Docker">
+    ### Docker Provider
+    
+    Fetches image tags from Docker Hub.
+    
+    <ParamField path="docker.extra.tags" type="string[]" default={["latest", "slim", "alpine"]}>
+      Array of Docker image tags to track. Common tags include:
+      - `latest` - Latest version
+      - `alpine` - Alpine-based images
+      - `slim` - Slim/minimal images
+      - Version-specific tags (e.g., `16-alpine`, `20.10.0`)
+      
+      Default: `["latest", "slim", "alpine"]`
+    </ParamField>
+    
+    ```yaml Example
+    docker:
+      extra:
+        tags:
+          - latest
+          - alpine
+          - slim
+    ```
+    
+    <Accordion title="Implementation Details">
+      - Fetches from Docker Hub API
+      - Handles both official images (`node` → `library/node`) and user images (`user/image`)
+      - Fetches each tag individually with retry logic
+      - Filters out invalid releases without digest
+      - Links to hub.docker.com
+    </Accordion>
+  </Tab>
+  
+  <Tab title="Python">
+    ### Python Provider
+    
+    Fetches package information from PyPI (Python Package Index).
+    
+    <ParamField path="python.extra.maxReleases" type="number" default={3}>
+      Maximum number of releases to fetch per package.
+      
+      Default: `3`
+    </ParamField>
+    
+    ```yaml Example
+    python:
+      extra:
+        maxReleases: 5
+    ```
+    
+    <Accordion title="Implementation Details">
+      - Fetches from PyPI's JSON API
+      - Returns the most recent releases up to `maxReleases`
+      - Links to pypi.org
+      - Package format: PyPI package name (e.g., `django`, `requests`)
+    </Accordion>
+  </Tab>
+</Tabs>
+
+## Schema Structure
+
+The `providers.yaml` configuration uses the following schema:
+
+```typescript
+const ProviderConfig = Schema.Struct({
+  extra: Schema.Record({
+    key: Schema.String,
+    value: Schema.Union(
+      Schema.String,
+      Schema.Boolean,
+      Schema.Number,
+      Schema.Array(Schema.Union(Schema.String, Schema.Boolean, Schema.Number)),
+    ),
+  }).pipe(Schema.optional),
+});
+
+const ProvidersConfig = Schema.Record({
+  key: Schema.String,  // Provider name
+  value: ProviderConfig,
+});
+```
+
+This allows flexible configuration of any provider with typed extra options.
+
+## Default Values
+
+If `providers.yaml` is missing or a provider is not configured, Shipped uses these defaults:
+
+<CodeGroup>
+```yaml GitHub Defaults
+github:
+  extra:
+    includePrereleases: false
+    maxReleases: 3
+```
+
+```yaml NPM Defaults
+npm:
+  extra:
+    tags:
+      - latest
+```
+
+```yaml Docker Defaults
+docker:
+  extra:
+    tags:
+      - latest
+      - slim
+      - alpine
+```
+
+```yaml Python Defaults
+python:
+  extra:
+    maxReleases: 3
+```
+</CodeGroup>
+
+## Overriding Per-Package
+
+Global provider settings can be overridden for individual packages in `lists.yaml`:
+
+```yaml lists.yaml
+# Global GitHub settings: maxReleases=3, includePrereleases=false
+# This package overrides to show 10 releases including pre-releases
+
+- name: My Packages
+  groups:
+    - name: frameworks
+      packages:
+        - provider: github
+          name: vuejs/vue
+          extra:
+            maxReleases: 10
+            includePrereleases: true
+```
+
+The package-level `extra` options are **merged** with provider defaults, with package-level values taking precedence.
+
+## Complete Example
+
+```yaml providers.yaml
+# GitHub provider defaults
+github:
+  extra:
+    # Fetch up to 5 releases per repository
+    maxReleases: 5
+    # Don't include pre-release versions
+    includePrereleases: false
+
+# NPM provider defaults
+npm:
+  extra:
+    # Track latest, beta, and next dist-tags
+    tags:
+      - latest
+      - beta
+      - next
+    # Use npmjs.com for links (not npmx.dev)
+    npmx: false
+
+# Docker provider defaults
+docker:
+  extra:
+    # Track latest, alpine, and slim tags
+    tags:
+      - latest
+      - alpine
+      - slim
+
+# Python provider defaults
+python:
+  extra:
+    # Fetch up to 5 releases per package
+    maxReleases: 5
+```
+
+## Validation and Error Handling
+
+<Accordion title="Validation Rules">
+  1. **Provider names** - Must be one of: `github`, `npm`, `docker`, `python`
+  2. **Extra fields** - Must match the provider's schema:
+     - GitHub: `maxReleases` (number), `includePrereleases` (boolean)
+     - NPM: `tags` (string[]), `npmx` (boolean)
+     - Docker: `tags` (string[])
+     - Python: `maxReleases` (number)
+  3. **Type checking** - Values must match expected types (string, boolean, number, or arrays)
+</Accordion>
+
+### Invalid Configuration Handling
+
+When provider configuration is invalid:
+
+1. The invalid provider configuration is **ignored**
+2. **Default values** are used for that provider
+3. A **warning is logged** with validation details
+4. The **application continues** running normally
+
+<Warning>
+  If the entire `providers.yaml` file is malformed (invalid YAML syntax), the file is ignored and defaults are used for all providers.
+</Warning>
+
+## IDE Autocompletion
+
+Enable IDE autocompletion by adding the schema reference:
+
+```yaml providers.yaml
+# yaml-language-server: $schema: https://raw.githubusercontent.com/nipakke/shipped/main/docs/config-files/providers.json
+
+github:
+  extra:
+    maxReleases: 5
+    includePrereleases: false
+```
+
+This provides:
+- Provider name autocompletion
+- Field validation for each provider
+- Type hints for configuration values
+
+## Hot Reloading
+
+Changes to `providers.yaml` are automatically detected and applied without restart:
+
+1. **Edit** `providers.yaml` in your config directory
+2. **Save** the file
+3. **Shipped automatically** reloads provider configuration
+4. **All packages** use the new defaults on next fetch
+
+<Note>
+  Cached package data is not immediately refetched. Wait for the cache TTL (default: 3 hours) or restart to force a refetch with new provider settings.
+</Note>
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Track pre-releases globally">
+    Enable pre-releases for all GitHub packages:
+    
+    ```yaml providers.yaml
+    github:
+      extra:
+        maxReleases: 5
+        includePrereleases: true
+    ```
+  </Accordion>
+  
+  <Accordion title="Track multiple NPM dist-tags">
+    Set up tracking for latest, beta, and canary builds:
+    
+    ```yaml providers.yaml
+    npm:
+      extra:
+        tags:
+          - latest
+          - beta
+          - canary
+          - next
+    ```
+  </Accordion>
+  
+  <Accordion title="Customize Docker image variants">
+    Track specific image variants across all Docker packages:
+    
+    ```yaml providers.yaml
+    docker:
+      extra:
+        tags:
+          - latest
+          - alpine
+          - 16-alpine
+          - 20-alpine
+    ```
+  </Accordion>
+  
+  <Accordion title="Increase release history">
+    Show more releases for better version history:
+    
+    ```yaml providers.yaml
+    github:
+      extra:
+        maxReleases: 10
+    
+    python:
+      extra:
+        maxReleases: 10
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Cache Considerations
+
+Provider settings affect how packages are fetched, but cached data is not immediately invalidated:
+
+- **Cache TTL**: Default 3 hours (10,800 seconds)
+- **Force refresh**: Restart the container to clear cache
+- **Disable cache**: Set `SERVER_PACKAGES_CACHE_DISABLED=true`
+
+<Tip>
+  To see provider configuration changes immediately, restart the container or wait for the cache to expire.
+</Tip>
+
+## Environment Variables
+
+Some provider behaviors can be influenced by environment variables:
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SERVER_PACKAGES_FETCH_CONCURRENCY` | integer | 10 | Max parallel package fetches |
+| `SERVER_PACKAGES_CACHE_TTL` | integer | 10800 | Cache TTL in seconds |
+| `SERVER_PACKAGES_CACHE_DISABLED` | boolean | false | Disable package caching |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Lists Configuration" icon="list" href="/configuration/lists">
+    Define packages to track
+  </Card>
+  <Card title="General Settings" icon="sliders" href="/configuration/general-settings">
+    Configure application behavior
+  </Card>
+</CardGroup>

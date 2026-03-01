@@ -1,0 +1,424 @@
+---
+title: Docker Compose Setup
+description: Production-ready Docker Compose configuration for Shipped
+---
+
+This guide provides Docker Compose configurations for running Shipped in production with proper volume management, networking, and optional reverse proxy setup.
+
+## Basic Setup
+
+Create a `docker-compose.yml` file:
+
+```yaml docker-compose.yml
+services:
+  shipped:
+    image: nipakke/shipped:1
+    ports:
+      - 3000:3000
+    volumes:
+      - /path-to-data:/data
+    restart: unless-stopped
+```
+
+Start the service:
+
+```bash
+docker compose up -d
+```
+
+## Production Configuration
+
+A more complete production setup with separate volumes and environment variables:
+
+```yaml docker-compose.yml
+services:
+  shipped:
+    image: nipakke/shipped:1
+    container_name: shipped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Separate config and cache volumes
+      - ./config:/data/config
+      - shipped-cache:/data/cache
+    environment:
+      # Logging
+      - SERVER_LOG_LEVEL=info
+      
+      # Cache configuration
+      - SERVER_PACKAGES_CACHE_TTL=10800
+      - SERVER_PACKAGES_CACHE_MAX_SIZE=50mb
+      - SERVER_PACKAGES_CACHE_MAX_ITEMS=2000
+      
+      # Package fetching
+      - SERVER_PACKAGES_FETCH_CONCURRENCY=10
+      
+      # File watching for network volumes
+      # - SERVER_CONFIG_WATCH_POLLING=true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  shipped-cache:
+    driver: local
+```
+
+<Steps>
+
+<Step title="Create the directory structure">
+  ```bash
+  mkdir -p config
+  touch docker-compose.yml
+  ```
+</Step>
+
+<Step title="Add your configuration files">
+  Create your YAML configuration files in the `config/` directory:
+
+  ```bash
+  # Create a basic lists.yaml
+  cat > config/lists.yaml <<EOF
+  - name: Production Services
+    groups:
+      - name: infrastructure
+        packages:
+          - provider: docker
+            name: postgres
+          - provider: docker
+            name: redis
+  EOF
+  ```
+</Step>
+
+<Step title="Start the service">
+  ```bash
+  docker compose up -d
+  ```
+</Step>
+
+<Step title="View logs">
+  ```bash
+  docker compose logs -f shipped
+  ```
+</Step>
+
+</Steps>
+
+## With Reverse Proxy (Traefik)
+
+Integrate Shipped with Traefik for automatic HTTPS:
+
+```yaml docker-compose.yml
+services:
+  shipped:
+    image: nipakke/shipped:1
+    container_name: shipped
+    volumes:
+      - ./config:/data/config
+      - shipped-cache:/data/cache
+    environment:
+      - SERVER_TRUST_PROXIES=true
+      - SERVER_LOG_LEVEL=info
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.shipped.rule=Host(`shipped.example.com`)"
+      - "traefik.http.routers.shipped.entrypoints=websecure"
+      - "traefik.http.routers.shipped.tls.certresolver=letsencrypt"
+      - "traefik.http.services.shipped.loadbalancer.server.port=3000"
+    restart: unless-stopped
+
+networks:
+  web:
+    external: true
+
+volumes:
+  shipped-cache:
+    driver: local
+```
+
+<Note>
+  When using a reverse proxy, set `SERVER_TRUST_PROXIES=true` to ensure client IPs are correctly detected.
+</Note>
+
+## With Nginx Reverse Proxy
+
+Integrate with Nginx for SSL termination:
+
+```yaml docker-compose.yml
+services:
+  shipped:
+    image: nipakke/shipped:1
+    container_name: shipped
+    expose:
+      - 3000
+    volumes:
+      - ./config:/data/config
+      - shipped-cache:/data/cache
+    environment:
+      - SERVER_TRUST_PROXIES=true
+    networks:
+      - internal
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - internal
+    depends_on:
+      - shipped
+    restart: unless-stopped
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  shipped-cache:
+    driver: local
+```
+
+Example `nginx.conf`:
+
+```nginx nginx.conf
+server {
+    listen 80;
+    server_name shipped.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name shipped.example.com;
+
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+
+    location / {
+        proxy_pass http://shipped:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+## Volume Management
+
+### Using Bind Mounts
+
+Best for easy access to config files:
+
+```yaml
+volumes:
+  - ./config:/data/config          # Easy to edit
+  - shipped-cache:/data/cache      # Docker-managed for performance
+```
+
+### Using Named Volumes
+
+Best for production isolation:
+
+```yaml
+volumes:
+  - shipped-config:/data/config
+  - shipped-cache:/data/cache
+
+volumes:
+  shipped-config:
+    driver: local
+  shipped-cache:
+    driver: local
+```
+
+Access config files:
+
+```bash
+# Copy files in/out
+docker cp config/lists.yaml shipped:/data/config/lists.yaml
+docker cp shipped:/data/config/lists.yaml ./lists.yaml
+
+# Edit directly
+docker exec -it shipped sh
+cd /data/config
+vi lists.yaml
+```
+
+## Environment Variables Reference
+
+Common environment variables for Docker Compose:
+
+### Server Configuration
+
+```yaml
+environment:
+  # Trust reverse proxy headers
+  - SERVER_TRUST_PROXIES=true
+  
+  # Logging level (trace, debug, info, warning, error, fatal)
+  - SERVER_LOG_LEVEL=info
+  
+  # Config directory (default: /data/config in Docker)
+  - SERVER_CONFIG_DIR=/data/config
+  
+  # Use polling for network volumes
+  - SERVER_CONFIG_WATCH_POLLING=true
+```
+
+### Cache Configuration
+
+```yaml
+environment:
+  # Disable caching entirely
+  - SERVER_PACKAGES_CACHE_DISABLED=false
+  
+  # Cache directory (default: /data/cache in Docker)
+  - SERVER_PACKAGES_CACHE_DIR=/data/cache
+  
+  # Cache TTL in seconds (default: 10800 = 3 hours)
+  - SERVER_PACKAGES_CACHE_TTL=10800
+  
+  # L1 memory cache max size
+  - SERVER_PACKAGES_CACHE_MAX_SIZE=50mb
+  
+  # L1 memory cache max items
+  - SERVER_PACKAGES_CACHE_MAX_ITEMS=2000
+  
+  # Cache pruning interval in seconds (default: 1200 = 20 minutes)
+  - SERVER_PACKAGES_CACHE_PRUNE_INTERVAL=1200
+```
+
+### Package Fetching
+
+```yaml
+environment:
+  # Maximum parallel package fetch requests (default: 10)
+  - SERVER_PACKAGES_FETCH_CONCURRENCY=10
+```
+
+## Backup and Restore
+
+### Backup Configuration
+
+```bash
+# Using bind mounts
+tar -czf shipped-backup.tar.gz config/
+
+# Using named volumes
+docker run --rm \
+  -v shipped-config:/data/config \
+  -v $(pwd):/backup \
+  alpine tar -czf /backup/shipped-config-backup.tar.gz -C /data/config .
+```
+
+### Restore Configuration
+
+```bash
+# Using bind mounts
+tar -xzf shipped-backup.tar.gz
+
+# Using named volumes
+docker run --rm \
+  -v shipped-config:/data/config \
+  -v $(pwd):/backup \
+  alpine tar -xzf /backup/shipped-config-backup.tar.gz -C /data/config
+```
+
+## Updates
+
+Update Shipped to the latest version:
+
+```bash
+# Pull the latest image
+docker compose pull
+
+# Recreate the container
+docker compose up -d
+
+# Remove old images
+docker image prune -f
+```
+
+Pin to a specific version:
+
+```yaml
+services:
+  shipped:
+    image: nipakke/shipped:1.1.0  # Specific version
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Container won't start">
+    Check logs for errors:
+    ```bash
+    docker compose logs shipped
+    ```
+    
+    Common issues:
+    - Port 3000 already in use (change port mapping)
+    - Volume permissions (ensure `/data` is writable by user `bun`)
+    - Invalid environment variables
+  </Accordion>
+
+  <Accordion title="Config changes not detected">
+    For network volumes or NFS mounts, enable polling:
+    ```yaml
+    environment:
+      - SERVER_CONFIG_WATCH_POLLING=true
+    ```
+    
+    Verify file watching:
+    ```bash
+    docker compose logs shipped | grep -i watch
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied errors">
+    The container runs as user `bun` (UID 1000). Fix permissions:
+    ```bash
+    sudo chown -R 1000:1000 ./config
+    sudo chown -R 1000:1000 ./cache
+    ```
+  </Accordion>
+
+  <Accordion title="High memory usage">
+    Reduce L1 memory cache size:
+    ```yaml
+    environment:
+      - SERVER_PACKAGES_CACHE_MAX_SIZE=25mb
+      - SERVER_PACKAGES_CACHE_MAX_ITEMS=1000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Files" icon="file" href="/configuration/overview">
+    Learn about YAML configuration structure
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/reference/environment-variables">
+    Complete environment variable reference
+  </Card>
+  <Card title="Providers" icon="plug" href="/providers/overview">
+    Configure package providers
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/advanced/architecture">
+    Understand how Shipped works
+  </Card>
+</CardGroup>

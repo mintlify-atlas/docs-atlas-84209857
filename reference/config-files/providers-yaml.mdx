@@ -1,0 +1,151 @@
+---
+title: providers.yaml
+description: Configure default provider settings
+---
+
+The `providers.yaml` file defines default configuration for package providers. These settings apply globally to all packages using a specific provider, unless overridden in individual package configurations.
+
+## File Structure
+
+The configuration file is an object with provider-specific settings:
+
+```yaml
+github:
+  extra:
+    includePrereleases: false
+    maxReleases: 10
+
+npm:
+  extra:
+    tags: [latest]
+    npmx: false
+
+python:
+  extra:
+    maxReleases: 10
+
+docker:
+  extra:
+    tags: [latest]
+```
+
+## GitHub Provider
+
+<ParamField path="github.extra" type="object">
+  Default settings for GitHub packages.
+</ParamField>
+
+<ParamField path="github.extra.includePrereleases" type="boolean">
+  Include pre-release versions in the release list for all GitHub packages.
+</ParamField>
+
+<ParamField path="github.extra.maxReleases" type="number">
+  Default maximum number of releases to fetch and display for GitHub packages.
+</ParamField>
+
+**Example:**
+```yaml
+github:
+  extra:
+    includePrereleases: false
+    maxReleases: 15
+```
+
+## NPM Provider
+
+<ParamField path="npm.extra" type="object">
+  Default settings for NPM packages.
+</ParamField>
+
+<ParamField path="npm.extra.tags" type="array">
+  Default array of NPM dist-tags to track (e.g., `latest`, `next`, `beta`).
+</ParamField>
+
+<ParamField path="npm.extra.npmx" type="boolean">
+  Use npmx.dev instead of npmjs.com as the external link for all NPM packages.
+</ParamField>
+
+**Example:**
+```yaml
+npm:
+  extra:
+    tags: [latest, next]
+    npmx: true
+```
+
+## Python Provider
+
+<ParamField path="python.extra" type="object">
+  Default settings for Python packages.
+</ParamField>
+
+<ParamField path="python.extra.maxReleases" type="number">
+  Default maximum number of releases to fetch and display for Python packages.
+</ParamField>
+
+**Example:**
+```yaml
+python:
+  extra:
+    maxReleases: 20
+```
+
+## Docker Provider
+
+<ParamField path="docker.extra" type="object">
+  Default settings for Docker packages.
+</ParamField>
+
+<ParamField path="docker.extra.tags" type="array">
+  Default array of Docker tags to track (e.g., `latest`, `stable`).
+</ParamField>
+
+**Example:**
+```yaml
+docker:
+  extra:
+    tags: [latest, stable, alpine]
+```
+
+## Complete Example
+
+```yaml
+# Default settings for all GitHub packages
+github:
+  extra:
+    includePrereleases: false
+    maxReleases: 10
+
+# Default settings for all NPM packages
+npm:
+  extra:
+    tags: [latest]
+    npmx: false
+
+# Default settings for all Python packages
+python:
+  extra:
+    maxReleases: 10
+
+# Default settings for all Docker packages
+docker:
+  extra:
+    tags: [latest]
+```
+
+## Override Behavior
+
+Settings in `providers.yaml` serve as defaults. You can override them for individual packages in `lists.yaml`:
+
+```yaml
+# In providers.yaml
+npm:
+  extra:
+    tags: [latest]
+
+# In lists.yaml - this package overrides the default
+- provider: npm
+  name: react
+  extra:
+    tags: [latest, next, experimental]  # Override default
+```

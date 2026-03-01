@@ -1,0 +1,431 @@
+---
+title: Python/PyPI Provider
+description: Track Python package releases using the PyPI provider in Shipped
+---
+
+The Python provider tracks package releases from the Python Package Index (PyPI) using the [PyPI JSON API](https://pypi.org/).
+
+## Package Name Format
+
+Python packages should be specified by their PyPI name:
+
+```yaml
+packages:
+  - name: requests
+    provider: python
+```
+
+**Case handling:**
+PyPI package names are case-insensitive. The provider uses the canonical name from the API response.
+
+**Examples:**
+- `django` - Popular web framework
+- `numpy` - Scientific computing library
+- `Flask` - Micro web framework (case-insensitive)
+
+## Configuration Options
+
+The Python provider supports the following extra options:
+
+### `maxReleases`
+
+**Type:** `number`  
+**Default:** `3`  
+**Minimum:** `1`  
+**Maximum:** `10` (clamped)
+
+Number of recent releases to track, sorted by publication date.
+
+```yaml
+packages:
+  - name: django
+    provider: python
+    extra:
+      maxReleases: 5
+```
+
+The provider automatically sorts all releases by upload time (newest first) and returns the most recent N releases.
+
+## Complete Example
+
+```yaml
+packages:
+  - name: flask
+    provider: python
+    extra:
+      maxReleases: 3
+```
+
+## API Endpoints
+
+The Python provider uses the PyPI JSON API:
+
+### Get Package Data
+
+```
+GET https://pypi.org/pypi/{package}/json
+```
+
+**Example:**
+```
+GET https://pypi.org/pypi/requests/json
+```
+
+**Response structure:**
+```typescript
+{
+  info: {              // Package metadata
+    name: string;
+    version: string;
+    author: string | null;
+    summary: string;
+    home_page: string | null;
+    project_urls: Record<string, string>;
+    license: string | null;
+  },
+  releases: {          // All versions
+    "1.0.0": [...],    // Array of release files
+    "2.0.0": [...],
+  },
+  urls: [...]          // Latest version files
+}
+```
+
+Source: `server/providers/python/types.ts:28-32`
+
+## Package Output Format
+
+The Python provider returns packages in this format:
+
+```typescript
+{
+  name: "requests",
+  owner: "psf",                      // Extracted from GitHub URL or author
+  providerName: "python",
+  url: "https://pypi.org/project/requests/",
+  sourceUrl: "https://github.com/psf/requests",
+  description: "Python HTTP for Humans.",
+  releases: [
+    {
+      name: "requests",
+      version: "2.31.0",
+      tag: "2.31.0",
+      createdAt: "2024-01-15T10:30:00Z"
+    },
+    {
+      name: "requests",
+      version: "2.30.0",
+      tag: "2.30.0",
+      createdAt: "2023-12-01T08:20:00Z"
+    }
+  ]
+}
+```
+
+## Owner Extraction
+
+The provider attempts to extract the owner from multiple sources:
+
+```typescript
+const extractOwnerFromSourceUrl = (sourceUrl: string | undefined): string | undefined => {
+  if (!sourceUrl) return undefined;
+  
+  // Try to extract owner/repo from GitHub URLs
+  const githubMatch = sourceUrl.match(/github\.com\/([^/]+)/);
+  if (githubMatch) {
+    return githubMatch[1];
+  }
+  
+  return undefined;
+};
+```
+
+Source: `server/providers/python/index.ts:11-21`
+
+**Fallback order:**
+1. GitHub username from `project_urls.Source`
+2. GitHub username from `home_page`
+3. Package `author` field
+4. `undefined` if none available
+
+**Example:**
+- Source URL: `https://github.com/psf/requests`
+- Extracted owner: `psf`
+
+Source: `server/providers/python/index.ts:42-43`
+
+## Source URL Resolution
+
+Source URLs are extracted from PyPI metadata:
+
+```typescript
+const sourceUrl = result.info.project_urls?.Source || 
+                  result.info.home_page || 
+                  undefined;
+```
+
+Source: `server/providers/python/index.ts:42`
+
+**Priority:**
+1. `info.project_urls.Source` - Explicit source URL
+2. `info.home_page` - Homepage (often points to repository)
+3. `undefined` - No source URL available
+
+## Release Processing
+
+Releases are processed by extracting upload times and sorting chronologically:
+
+```typescript
+const releases = Object.entries(result.releases)
+  .map(([version, files]) => {
+    // Get the first file's upload time
+    const firstFile = files[0];
+    if (!firstFile?.upload_time_iso_8601) {
+      return null;
+    }
+    
+    return {
+      version,
+      createdAt: firstFile.upload_time_iso_8601,
+    };
+  })
+  .filter((r): r is NonNullable<typeof r> => r !== null)
+  // Sort by upload time descending (newest first)
+  .toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // Take the last N releases
+  .slice(0, releasesLimit)
+  .map((r) =>
+    PackageRelease.make({
+      version: r.version,
+      createdAt: r.createdAt,
+      name: packageName,
+      tag: r.version,
+    }),
+  );
+```
+
+Source: `server/providers/python/index.ts:59-84`
+
+**Process:**
+1. Iterate through all versions in `releases` object
+2. Extract upload time from first file in each version
+3. Filter out versions without upload times
+4. Sort by upload time (newest first)
+5. Take first N releases (based on `maxReleases`)
+6. Convert to `PackageRelease` objects
+
+## Upload Time Selection
+
+Each PyPI release version can have multiple distribution files (wheels, source distributions, etc.). The provider uses the upload time from the first file:
+
+```typescript
+const firstFile = files[0];
+if (!firstFile?.upload_time_iso_8601) {
+  return null;
+}
+```
+
+This is safe because all files for a version are typically uploaded at the same time or within seconds of each other.
+
+Source: `server/providers/python/index.ts:62-64`
+
+## Max Releases Clamping
+
+The `maxReleases` value is clamped to a maximum of 10:
+
+```typescript
+const maxReleases = Number(effectiveExtra?.maxReleases ?? 5);
+const releasesLimit = Number.isFinite(maxReleases) ? clamp(maxReleases, 10) : 5;
+```
+
+Source: `server/providers/python/index.ts:55-56`
+
+**Behavior:**
+- Default: `3` (from provider defaults)
+- If not specified: `5`
+- If specified: clamped to minimum 1, maximum 10
+- If invalid (NaN, Infinity): fallback to `5`
+
+## Error Handling
+
+### Invalid Package Name
+
+Occurs when:
+- Package name is empty or whitespace only
+
+```typescript
+new InvalidPackageNameError({ name, provider: "python" })
+```
+
+Source: `server/providers/python/index.ts:33-34`
+
+### Package Not Found (404)
+
+Occurs when:
+- Package doesn't exist on PyPI
+- Package name is misspelled
+- Package was removed from PyPI
+
+```typescript
+new PackageNotFoundError({ name, provider: "python" })
+```
+
+Source: `server/providers/python/client.ts:29-30`
+
+### Network Error
+
+Occurs when:
+- PyPI is unreachable
+- Request times out
+- Other HTTP errors (non-404)
+
+```typescript
+new NetworkError({
+  name,
+  provider: "python",
+  reason: error.message
+})
+```
+
+Source: `server/providers/python/client.ts:32-36`
+
+## Implementation Details
+
+### Client Layer
+
+The Python client (`PythonClient`) provides one method:
+
+```typescript
+class PythonClient {
+  getPackageData(name: string): Effect<PyPIResponse, ProviderError>
+}
+```
+
+Source: `server/providers/python/client.ts:11-16`
+
+### Type Definitions
+
+**PyPIResponse:**
+
+```typescript
+{
+  info: PyPIInfo;
+  releases: Record<string, PyPIReleaseFile[]>;  // version -> files
+  urls: PyPIReleaseFile[];                      // Latest version files
+}
+```
+
+Source: `server/providers/python/types.ts:28-32`
+
+**PyPIInfo:**
+
+```typescript
+{
+  name?: string;
+  version?: string;
+  author: string | null;
+  author_email?: string;
+  summary?: string;              // Short description
+  home_page: string | null;
+  license: string | null;
+  project_urls?: Record<string, string>;  // "Source", "Homepage", etc.
+  description?: string;          // Full description (README)
+}
+```
+
+Source: `server/providers/python/types.ts:16-26`
+
+**PyPIReleaseFile:**
+
+```typescript
+{
+  upload_time_iso_8601?: string;  // ISO timestamp
+  filename?: string;               // "package-1.0.0-py3-none-any.whl"
+  url?: string;                    // Download URL
+  size?: number;                   // File size in bytes
+  packagetype?: string;            // "bdist_wheel", "sdist"
+  python_version?: string;         // "py3", "cp39"
+  md5_digest?: string;
+  sha256?: string;
+  yanked?: boolean;                // Whether release was yanked
+  yanked_reason: null;
+}
+```
+
+Source: `server/providers/python/types.ts:3-14`
+
+## Provider Info
+
+```typescript
+export const PythonProviderInfo = new ProviderInfo({
+  id: "python",
+  name: "Python",
+  homepage: "https://pypi.org",
+  icon: "devicon:python",
+  extraSchema: Schema.Struct({
+    maxReleases: Schema.Number.pipe(Schema.optional),
+  }),
+  extraDefaults: {
+    maxReleases: 3,
+  },
+});
+```
+
+Source: `shared/providers/python.ts:5-16`
+
+## URL Encoding
+
+Package names are URL-encoded when making API requests:
+
+```typescript
+const encodedName = encodeURIComponent(name);
+const url = `${PYPI_BASE_URL}${encodedName}/json`;
+```
+
+Source: `server/providers/python/client.ts:21-22`
+
+This ensures special characters in package names are properly handled.
+
+## Package URL Format
+
+Package URLs follow the PyPI project URL format:
+
+```
+https://pypi.org/project/{packageName}/
+```
+
+**Examples:**
+- `https://pypi.org/project/requests/`
+- `https://pypi.org/project/Django/`
+- `https://pypi.org/project/numpy/`
+
+Note the trailing slash is included.
+
+Source: `server/providers/python/index.ts:9` and `index.ts:49`
+
+## Yanked Releases
+
+The provider currently includes yanked releases in the response. PyPI marks releases as "yanked" when they have critical bugs or security issues, but they remain available.
+
+The `yanked` field is available in the `PyPIReleaseFile` type but not currently filtered:
+
+```typescript
+yanked?: boolean;
+yanked_reason: null;
+```
+
+Source: `server/providers/python/types.ts:12-13`
+
+## Caching
+
+Python provider requests are cached using the standard Shipped cache:
+
+- Cache key includes: package name and configuration hash
+- Full PyPI response (including all releases) is cached
+- Release sorting happens on cached data
+
+## Version History
+
+**Current version:** `1`
+
+Source: `server/providers/python/index.ts:28`

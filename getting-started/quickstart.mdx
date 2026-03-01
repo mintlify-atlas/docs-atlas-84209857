@@ -1,0 +1,232 @@
+---
+title: Quick Start
+description: Get up and running with Shipped in minutes
+---
+
+This guide will walk you through setting up Shipped and tracking your first package in under 5 minutes.
+
+## Installation
+
+<Steps>
+
+<Step title="Start Shipped with Docker">
+  Run the following command to start Shipped:
+
+  ```bash
+  docker run -d \
+    --name shipped \
+    -p 3000:3000 \
+    -v shipped-data:/data \
+    --restart unless-stopped \
+    nipakke/shipped:1
+  ```
+
+  Shipped will be available at `http://localhost:3000`
+</Step>
+
+<Step title="Create the config directory">
+  Create the configuration directory that will hold your package lists:
+
+  ```bash
+  # Get a shell in the container
+  docker exec -it shipped sh
+
+  # Config directory is automatically created at /data/config
+  ls -la /data/config
+  ```
+
+  Or, if using a bind mount:
+
+  ```bash
+  mkdir -p /path-to-data/config
+  ```
+</Step>
+
+<Step title="Add your first package list">
+  Create a `lists.yaml` file in the config directory to define which packages to track:
+
+  ```bash
+  # Using docker exec
+  docker exec -it shipped sh -c 'cat > /data/config/lists.yaml <<EOF
+  - name: My Packages
+    description: Packages I use daily
+    groups:
+      - name: frontend
+        displayName: Frontend Tools
+        packages:
+          - provider: github
+            name: vuejs/vue
+            displayName: Vue.js
+          - provider: npm
+            name: vue
+  EOF'
+  ```
+
+  Or create the file directly if using a bind mount:
+
+  ```yaml /path-to-data/config/lists.yaml
+  - name: My Packages
+    description: Packages I use daily
+    groups:
+      - name: frontend
+        displayName: Frontend Tools
+        packages:
+          - provider: github
+            name: vuejs/vue
+            displayName: Vue.js
+          - provider: npm
+            name: vue
+  ```
+</Step>
+
+<Step title="View your tracked packages">
+  Open `http://localhost:3000` in your browser. You should see:
+
+  - A list titled "My Packages" in the header navigation
+  - The "Frontend Tools" group with Vue.js releases from both GitHub and NPM
+  - Latest release versions with links to the official releases
+
+  Configuration changes are applied automatically - no restart needed!
+</Step>
+
+</Steps>
+
+## Add More Packages
+
+Edit your `lists.yaml` to track additional packages:
+
+```yaml
+- name: My Packages
+  groups:
+    - name: frontend
+      displayName: Frontend Tools
+      packages:
+        - provider: github
+          name: vuejs/vue
+        - provider: npm
+          name: vue
+        - provider: npm
+          name: react
+        - provider: github
+          name: facebook/react
+
+    - name: backend
+      displayName: Backend Services
+      packages:
+        - provider: docker
+          name: postgres
+          displayName: PostgreSQL
+          extra:
+            tags: ["latest", "alpine"]
+        - provider: python
+          name: fastapi
+```
+
+## Customize Provider Settings
+
+Create a `providers.yaml` file to configure provider-specific defaults:
+
+```yaml /data/config/providers.yaml
+github:
+  extra:
+    maxReleases: 5
+    includePrereleases: false
+
+npm:
+  extra:
+    tags:
+      - latest
+      - beta
+
+docker:
+  extra:
+    tags:
+      - latest
+      - alpine
+```
+
+These settings apply to all packages from that provider unless overridden in `lists.yaml`.
+
+## Configure the UI
+
+Create a `ui.yaml` file to customize the interface:
+
+```yaml /data/config/ui.yaml
+# Maximum lists to show in header navigation
+maxListsInHeader: 3
+```
+
+## Enable Real-Time Updates
+
+Create a `general.yaml` file to enable config streaming:
+
+```yaml /data/config/general.yaml
+# Changes appear in the UI without page refresh
+streamConfigChanges: true
+```
+
+## Understanding Package Providers
+
+Shipped supports multiple package providers with different naming formats:
+
+| Provider | Name Format | Example |
+|----------|-------------|----------|
+| GitHub | `owner/repo` | `vuejs/vue` |
+| NPM | package name | `vue`, `@types/react` |
+| Docker | `image` or `namespace/image` | `postgres`, `library/nginx` |
+| Python | package name | `django`, `fastapi` |
+
+## Smart Caching
+
+Shipped automatically caches package data to minimize API calls:
+
+- **L1 Memory Cache**: Fast in-memory storage (default: 50MB, 2000 items)
+- **L2 File Cache**: Persistent storage in `/data/cache` (default: 3 hours TTL)
+
+Cache settings can be configured via environment variables:
+
+```bash
+-e SERVER_PACKAGES_CACHE_TTL=10800        # 3 hours in seconds
+-e SERVER_PACKAGES_CACHE_MAX_SIZE=50mb
+-e SERVER_PACKAGES_CACHE_MAX_ITEMS=2000
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Packages not showing up">
+    - Check that `lists.yaml` is in the correct location (`/data/config/lists.yaml`)
+    - Verify YAML syntax is valid (use a YAML validator)
+    - Check Docker logs: `docker logs shipped`
+    - Ensure package names use the correct format for each provider
+  </Accordion>
+
+  <Accordion title="Configuration changes not applying">
+    - Shipped watches config files automatically - no restart needed
+    - If using network volumes, set `SERVER_CONFIG_WATCH_POLLING=true`
+    - Check logs for file watching errors
+  </Accordion>
+
+  <Accordion title="Rate limiting errors">
+    - GitHub: Set a GitHub token in `providers.yaml` for higher rate limits
+    - Adjust cache TTL to reduce API calls
+    - Reduce `SERVER_PACKAGES_FETCH_CONCURRENCY` from default 10
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Files" icon="file" href="/configuration/overview">
+    Complete YAML configuration reference
+  </Card>
+  <Card title="Providers" icon="plug" href="/providers/overview">
+    Learn about all supported providers
+  </Card>
+  <Card title="Docker Compose" icon="docker" href="/getting-started/docker-compose">
+    Production-ready Docker Compose setup
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/reference/environment-variables">
+    Complete environment variable reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,391 @@
+---
+title: Lists Configuration
+description: Define which packages to track in lists.yaml
+icon: list
+---
+
+The `lists.yaml` file defines which packages Shipped should track, organized into lists and groups. This is the primary configuration file for managing your tracked packages.
+
+## File Location
+
+Place `lists.yaml` in your config directory:
+- **Docker**: `/data/config/lists.yaml` (default)
+- **Custom**: Set via `SERVER_CONFIG_DIR` environment variable
+
+## Basic Structure
+
+```yaml lists.yaml
+- name: Frontend Tools
+  description: Essential frontend libraries
+  groups:
+    - name: frameworks
+      displayName: JavaScript Frameworks
+      packages:
+        - provider: npm
+          name: react
+        - provider: npm
+          name: vue
+        - provider: npm
+          name: svelte
+```
+
+## Schema Reference
+
+### List
+
+A list is a collection of package groups with a name and optional description.
+
+<ParamField path="name" type="string" required>
+  The display name for this list. Must be unique across all lists.
+  
+  This is also used to generate the list slug for URLs (e.g., "Frontend Tools" becomes "frontend-tools").
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description explaining the purpose of this list.
+</ParamField>
+
+<ParamField path="groups" type="array">
+  Array of package groups. Each list can contain multiple groups to organize packages.
+</ParamField>
+
+### Group
+
+Groups organize packages within a list.
+
+<ParamField path="name" type="string | number" required>
+  The identifier for this group. Can be a string or number.
+</ParamField>
+
+<ParamField path="displayName" type="string">
+  Optional display name for the group. If not provided, the `name` field is used.
+</ParamField>
+
+<ParamField path="showName" type="boolean">
+  Whether to display the group name in the UI. Defaults to `true`.
+</ParamField>
+
+<ParamField path="packages" type="array" required>
+  Array of package configurations. See [Package Configuration](#package-configuration) below.
+</ParamField>
+
+## Package Configuration
+
+Each package requires a provider and name. Additional fields customize display and behavior.
+
+<ParamField path="provider" type="string" required>
+  The package provider. Supported values:
+  - `github` - GitHub releases
+  - `npm` - NPM packages
+  - `docker` - Docker Hub images
+  - `python` - PyPI packages
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  The package name in provider-specific format:
+  - **GitHub**: `owner/repo` (e.g., `vuejs/vue`)
+  - **NPM**: package name (e.g., `react`, `@types/node`)
+  - **Docker**: `image` or `namespace/image` (e.g., `node`, `library/nginx`)
+  - **Python**: package name (e.g., `django`, `requests`)
+</ParamField>
+
+<ParamField path="displayName" type="string">
+  Custom display name for the package. If not provided, the `name` field is used.
+</ParamField>
+
+<ParamField path="icon" type="string">
+  Custom icon for the package (light mode). Supports icon strings like `lucide:github`.
+</ParamField>
+
+<ParamField path="iconDark" type="string">
+  Custom icon for dark mode. Falls back to `icon` if not specified.
+</ParamField>
+
+<ParamField path="extra" type="object">
+  Provider-specific configuration options. See [Provider-Specific Options](#provider-specific-options).
+</ParamField>
+
+## Provider-Specific Options
+
+The `extra` field accepts provider-specific options that control how packages are fetched and displayed.
+
+<Tabs>
+  <Tab title="GitHub">
+    <ParamField path="extra.maxReleases" type="number" default={3}>
+      Maximum number of releases to fetch (1-10). Default: `3`
+    </ParamField>
+    
+    <ParamField path="extra.includePrereleases" type="boolean" default={false}>
+      Whether to include pre-release versions. Default: `false`
+    </ParamField>
+    
+    ```yaml Example
+    - provider: github
+      name: vuejs/vue
+      extra:
+        maxReleases: 5
+        includePrereleases: false
+    ```
+  </Tab>
+  
+  <Tab title="NPM">
+    <ParamField path="extra.tags" type="string[]" default={["latest"]}>
+      Array of NPM dist-tags to track (e.g., `latest`, `beta`, `next`). Default: `["latest"]`
+    </ParamField>
+    
+    <ParamField path="extra.npmx" type="boolean" default={false}>
+      Use npmx.dev instead of npmjs.com as the external link. Default: `false`
+    </ParamField>
+    
+    ```yaml Example
+    - provider: npm
+      name: react
+      extra:
+        tags:
+          - latest
+          - beta
+          - next
+        npmx: false
+    ```
+  </Tab>
+  
+  <Tab title="Docker">
+    <ParamField path="extra.tags" type="string[]" default={["latest", "slim", "alpine"]}>
+      Array of Docker image tags to track. Default: `["latest", "slim", "alpine"]`
+    </ParamField>
+    
+    ```yaml Example
+    - provider: docker
+      name: postgres
+      displayName: PostgreSQL
+      extra:
+        tags:
+          - latest
+          - alpine
+          - 16-alpine
+    ```
+  </Tab>
+  
+  <Tab title="Python">
+    <ParamField path="extra.maxReleases" type="number" default={3}>
+      Maximum number of releases to fetch. Default: `3`
+    </ParamField>
+    
+    ```yaml Example
+    - provider: python
+      name: django
+      extra:
+        maxReleases: 5
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Provider-specific options can be set globally in `providers.yaml` and overridden per-package in `lists.yaml`.
+  
+  See [Providers Configuration](/configuration/providers) for more details.
+</Note>
+
+## Complete Example
+
+```yaml lists.yaml
+# Frontend development packages
+- name: Frontend Tools
+  description: Essential frontend libraries and frameworks
+  groups:
+    - name: frameworks
+      displayName: JavaScript Frameworks
+      packages:
+        - provider: npm
+          name: react
+          displayName: React
+          extra:
+            tags:
+              - latest
+              - canary
+        
+        - provider: github
+          name: vuejs/vue
+          displayName: Vue.js
+          extra:
+            maxReleases: 5
+            includePrereleases: false
+        
+        - provider: npm
+          name: svelte
+          displayName: Svelte
+    
+    - name: build-tools
+      displayName: Build Tools
+      packages:
+        - provider: npm
+          name: vite
+          extra:
+            tags:
+              - latest
+              - beta
+        
+        - provider: npm
+          name: webpack
+
+# Backend services
+- name: Backend Services
+  description: Server infrastructure and databases
+  groups:
+    - name: databases
+      displayName: Databases
+      packages:
+        - provider: docker
+          name: postgres
+          displayName: PostgreSQL
+          extra:
+            tags:
+              - latest
+              - alpine
+              - 16-alpine
+        
+        - provider: docker
+          name: redis
+          displayName: Redis
+          extra:
+            tags:
+              - latest
+              - alpine
+    
+    - name: python-packages
+      displayName: Python Packages
+      packages:
+        - provider: python
+          name: fastapi
+          displayName: FastAPI
+          extra:
+            maxReleases: 5
+        
+        - provider: python
+          name: django
+          displayName: Django
+          extra:
+            maxReleases: 3
+```
+
+## Validation and Error Handling
+
+The lists configuration is validated using Effect Schema with graceful error handling:
+
+<Accordion title="Validation Rules">
+  1. **List names must be unique** - Duplicate list names will cause validation errors
+  2. **Provider must be valid** - Only `github`, `npm`, `docker`, and `python` are supported
+  3. **Package name format** - Must match provider-specific format requirements:
+     - GitHub: Must contain `/` (e.g., `owner/repo`)
+     - NPM: Valid package name (supports scoped packages like `@org/package`)
+     - Docker: Image name (with optional namespace)
+     - Python: Valid PyPI package name
+  4. **Extra fields** - Must match provider's schema (see provider-specific options above)
+</Accordion>
+
+### Invalid Package Handling
+
+When a package fails validation:
+
+1. The package is **skipped** (not included in the list)
+2. A **warning is logged** with details about the validation error
+3. The **rest of the list continues** to load normally
+4. Warnings are **displayed in the UI** to help you identify issues
+
+<Warning>
+  If an entire list or group is invalid, it will be skipped. Check the application logs and UI warnings to identify configuration issues.
+</Warning>
+
+## IDE Autocompletion
+
+Enable IDE autocompletion by adding the schema reference to the top of your `lists.yaml` file:
+
+```yaml lists.yaml
+# yaml-language-server: $schema: https://raw.githubusercontent.com/nipakke/shipped/main/docs/config-files/lists.json
+
+- name: My Packages
+  groups:
+    - name: frameworks
+      packages:
+        - provider: npm
+          name: react
+```
+
+This provides:
+- Field autocompletion
+- Inline validation errors
+- Type hints for all configuration options
+
+## Hot Reloading
+
+Changes to `lists.yaml` are automatically detected and applied:
+
+1. **Edit** `lists.yaml` in your config directory
+2. **Save** the file
+3. **Watch** as Shipped automatically reloads the configuration
+4. **See** the changes reflected in the UI (if streaming is enabled)
+
+<Tip>
+  No need to restart the container! Configuration changes are picked up automatically by the file watcher.
+</Tip>
+
+## Common Patterns
+
+<AccordionGroup>
+  <Accordion title="Tracking multiple versions of the same package">
+    Use different dist-tags for NPM or include pre-releases for GitHub:
+    
+    ```yaml
+    - provider: npm
+      name: react
+      extra:
+        tags:
+          - latest
+          - next
+          - canary
+    ```
+  </Accordion>
+  
+  <Accordion title="Organizing packages by team or project">
+    Create separate lists for different teams or projects:
+    
+    ```yaml
+    - name: Platform Team
+      groups:
+        - name: core
+          packages:
+            # Platform team packages
+    
+    - name: Frontend Team
+      groups:
+        - name: ui
+          packages:
+            # Frontend team packages
+    ```
+  </Accordion>
+  
+  <Accordion title="Hiding group names for cleaner UI">
+    Set `showName: false` on groups you don't want to display:
+    
+    ```yaml
+    - name: My Packages
+      groups:
+        - name: ungrouped
+          showName: false
+          packages:
+            - provider: npm
+              name: react
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Providers Configuration" icon="plug" href="/configuration/providers">
+    Set global defaults for providers
+  </Card>
+  <Card title="General Settings" icon="sliders" href="/configuration/general-settings">
+    Configure application behavior
+  </Card>
+</CardGroup>

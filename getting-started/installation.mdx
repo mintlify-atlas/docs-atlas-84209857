@@ -1,0 +1,142 @@
+---
+title: Installation
+description: Install Shipped using Docker or build from source
+---
+
+Shipped is a self-hosted dashboard that tracks package releases across platforms like GitHub, NPM, and Docker.
+
+## Prerequisites
+
+Choose one of the following:
+
+- **Docker**: Docker 20.10 or later
+- **Build from source**: Node.js 24+ and pnpm 10.30.0+
+
+## Installation Methods
+
+<CodeGroup>
+
+```bash Docker
+# Pull the latest version
+docker pull nipakke/shipped:1
+
+# Run the container
+docker run -d \
+  --name shipped \
+  -p 3000:3000 \
+  -v /path-to-data:/data \
+  --restart unless-stopped \
+  nipakke/shipped:1
+```
+
+```bash Docker Compose
+# Create docker-compose.yml
+cat > docker-compose.yml <<EOF
+services:
+  shipped:
+    image: nipakke/shipped:1
+    ports:
+      - 3000:3000
+    volumes:
+      - /path-to-data:/data
+    restart: unless-stopped
+EOF
+
+# Start the service
+docker compose up -d
+```
+
+```bash Build from Source
+# Clone the repository
+git clone https://github.com/nipakke/shipped.git
+cd shipped
+
+# Install dependencies
+pnpm install
+
+# Build the application
+pnpm run build
+
+# Preview the built application
+pnpm run preview
+```
+
+</CodeGroup>
+
+## Verify Installation
+
+Once Shipped is running, verify the installation:
+
+<Steps>
+
+<Step title="Access the dashboard">
+  Open your browser and navigate to `http://localhost:3000`
+</Step>
+
+<Step title="Check the status">
+  You should see the Shipped dashboard. If no packages are configured, you'll see an empty state.
+</Step>
+
+</Steps>
+
+## Data Persistence
+
+Shipped uses two directories for data storage:
+
+- **`/data/config`** - YAML configuration files (lists, providers, general settings)
+- **`/data/cache`** - Package release data cache (reduces API calls)
+
+When using Docker, mount the `/data` volume to persist your configuration and cache:
+
+```bash
+-v /path-to-data:/data
+```
+
+Or mount them separately:
+
+```bash
+-v /path-to-data/config:/data/config
+-v /path-to-data/cache:/data/cache
+```
+
+## Environment Variables
+
+Shipped can be configured using environment variables. All variables are optional with sensible defaults.
+
+### Common Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SERVER_CONFIG_DIR` | `config` | Config files directory (relative or absolute) |
+| `SERVER_PACKAGES_CACHE_DIR` | `cache` | Cache directory for package data |
+| `SERVER_PACKAGES_CACHE_DISABLED` | `false` | Disable package caching |
+| `SERVER_LOG_LEVEL` | - | Set log level (trace, debug, info, warning, error, fatal) |
+
+### Docker Environment Variables
+
+When using Docker, these are pre-configured in the image:
+
+```dockerfile
+HOST=0.0.0.0
+SERVER_CONFIG_DIR=/data/config
+SERVER_PACKAGES_CACHE_DIR=/data/cache
+```
+
+See the [Environment Variables reference](/reference/environment-variables) for the complete list.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
+    Get started with your first tracked package
+  </Card>
+  <Card title="Docker Compose" icon="docker" href="/getting-started/docker-compose">
+    Advanced Docker Compose setup
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/overview">
+    Learn about YAML configuration files
+  </Card>
+  <Card title="Providers" icon="plug" href="/providers/overview">
+    Explore supported package providers
+  </Card>
+</CardGroup>

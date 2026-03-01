@@ -1,0 +1,22 @@
+---
+title: general.yaml
+description: General application configuration
+---
+
+The `general.yaml` file contains general application settings for Shipped.
+
+## Configuration Options
+
+<ParamField path="streamConfigChanges" type="boolean">
+  Enable streaming of configuration changes to connected clients. When enabled, clients will receive real-time updates when configuration files change, without requiring a page refresh.
+</ParamField>
+
+## Example
+
+```yaml
+streamConfigChanges: true
+```
+
+## Default Behavior
+
+If `general.yaml` is not present or `streamConfigChanges` is not specified, the application will use its default behavior for configuration change handling.
