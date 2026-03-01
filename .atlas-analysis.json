@@ -1,0 +1,107 @@
+{
+  "projectType": "saas",
+  "projectName": "Shipped",
+  "projectDescription": "Self-hosted package release tracker for GitHub, NPM, Docker, and Python packages",
+  "theme": "aspen",
+  "primaryColor": "#3b82f6",
+  "lightColor": "#60a5fa",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "features"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/installation",
+              "getting-started/quickstart",
+              "getting-started/docker-compose"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/overview",
+              "configuration/lists",
+              "configuration/providers",
+              "configuration/ui-customization",
+              "configuration/general-settings"
+            ]
+          },
+          {
+            "group": "Providers",
+            "pages": [
+              "providers/overview",
+              "providers/github",
+              "providers/npm",
+              "providers/docker",
+              "providers/python"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/real-time-updates",
+              "features/caching",
+              "features/security"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/architecture",
+              "advanced/config-system",
+              "advanced/package-system"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Configuration Files",
+            "pages": [
+              "reference/config-files/lists-yaml",
+              "reference/config-files/providers-yaml",
+              "reference/config-files/general-yaml",
+              "reference/config-files/ui-yaml"
+            ]
+          },
+          {
+            "group": "Environment",
+            "pages": [
+              "reference/environment-variables"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-provider support (GitHub, NPM, Docker Hub, Python)",
+    "Custom package lists with grouping",
+    "Real-time configuration updates via hot-reloading",
+    "Multi-layer caching (L1 memory + L2 file)",
+    "Hash-based security for pre-configured packages",
+    "Self-hosted with Docker deployment"
+  ],
+  "publicApiSurface": [
+    "GitHub provider",
+    "NPM provider",
+    "Docker Hub provider",
+    "Python/PyPI provider",
+    "RPC endpoints for package fetching",
+    "SSE streaming for config changes",
+    "YAML configuration files (lists.yaml, providers.yaml, general.yaml, ui.yaml)",
+    "Environment variables for server configuration"
+  ]
+}
